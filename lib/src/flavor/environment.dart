@@ -1,0 +1,2 @@
+
+enum Environment { DEVELOPMENT, STAGING, PRODUCTION }
