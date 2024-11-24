@@ -1,0 +1,53 @@
+name: Create Shorebird Patch
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to patch (e.g., 5.0.1)'
+        required: true
+        type: string
+      platform:
+        description: 'Platform to patch'
+        required: true
+        type: choice
+        options:
+          - android
+          - ios
+          - both
+
+jobs:
+  create_patch:
+    name: Create Shorebird Patch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.9'
+          channel: 'stable'
+
+      - name: Install Shorebird
+        run: |
+          curl --fail --location --output shorebird https://github.com/shorebirdtech/shorebird/releases/latest/download/shorebird-linux
+          chmod +x shorebird
+          sudo mv shorebird /usr/local/bin/shorebird
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Create Android Patch
+        if: ${{ github.event.inputs.platform == 'android' || github.event.inputs.platform == 'both' }}
+        run: |
+          shorebird patch android --version ${{ github.event.inputs.version }}
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+
+      - name: Create iOS Patch
+        if: ${{ github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'both' }}
+        run: |
+          shorebird patch ios --version ${{ github.event.inputs.version }}
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}

@@ -8,7 +8,7 @@ class MyApp extends ConsumerWidget{
   @override
   Widget build(BuildContext context, WidgetRef ref){
     return GestureDetector(
-      child: Text("hi"),
+      child: Text("Whats up"),
     );
   }
 }

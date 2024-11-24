@@ -1,0 +1,59 @@
+Let me explain how to use versioning and Shorebird patches effectively:
+
+For regular app updates through stores (Play Store/App Store):
+
+# Tag a new version
+git tag v5.0.1
+git push origin v5.0.1
+This triggers the build.yml workflow to create new app builds.
+
+For Shorebird patches (hot updates for specific versions): You have two options:
+a. Using the manual workflow dispatch (easiest):
+
+Go to GitHub Actions
+Select "Create Shorebird Patch" workflow
+Click "Run workflow"
+Enter:
+Version: "5.0.1" (the version you want to patch)
+Platform: "android", "ios", or "both"
+b. Using command line:
+
+
+# Make your code changes
+git add .
+git commit -m "feat: update something"
+git push origin main
+
+# Create patch for specific version
+shorebird patch android --version 5.0.1
+# or
+shorebird patch ios --version 5.0.1
+Example scenarios:
+
+Patching a bug for users on version 5.0.1:
+
+# 1. Make your changes
+# 2. Push to main
+git push origin main
+
+# 3. Create patch using GitHub Actions
+# Go to Actions -> Create Shorebird Patch
+# Enter version: 5.0.1
+# Select platform: android/ios/both
+Releasing a new version (5.0.2):
+
+# 1. Update version in pubspec.yaml to 5.0.2
+# 2. Commit changes
+git add .
+git commit -m "chore: bump version to 5.0.2"
+
+# 3. Create and push tag
+git tag v5.0.2
+git push origin v5.0.2
+The key differences:
+
+Use tags (v5.0.1) for full app releases
+Use the patch workflow for hot updates to specific versions
+Patches only work for users already on that version
+New installations will get the latest store version
+Let me know if you need any clarification on the versioning strategy or patch process!

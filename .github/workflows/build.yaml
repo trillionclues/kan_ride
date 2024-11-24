@@ -1,0 +1,190 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to patch (e.g., 1.0.0)'
+        required: true
+        type: string
+      platform:
+        description: 'Platform to patch'
+        required: true
+        type: choice
+        options:
+          - android
+          - ios
+          - both
+
+jobs:
+  version:
+    name: Create version number
+    runs-on: ubuntu-latest
+    outputs:
+      version-number: ${{ steps.version-number.outputs.version }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0.10.2
+        with:
+          versionSpec: '5.x'
+      - name: Determine Version
+        id: version-number
+        uses: gittools/actions/gitversion/execute@v0.10.2
+        with:
+          updateAssemblyInfo: true
+
+  build_android:
+    name: Build Android App
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.9'
+          channel: 'stable'
+
+      - name: Install Shorebird
+        run: |
+          curl --fail --location --output shorebird https://github.com/shorebirdtech/shorebird/releases/latest/download/shorebird-linux
+          chmod +x shorebird
+          sudo mv shorebird /usr/local/bin/shorebird
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Build App Bundle
+        run: flutter build appbundle --release
+
+      - name: Create Shorebird Patch
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          shorebird patch android --version $VERSION
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+
+      - name: Sign Android Release
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: build/app/outputs/flutter-apk
+          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
+          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload Bundle
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-bundle
+          path: build/app/outputs/bundle/release/app-release.aab
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/bundle/release/app-release.aab
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build_ios:
+    name: Build iOS App
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.9'
+          channel: 'stable'
+
+      - name: Install Shorebird
+        run: |
+          curl --fail --location --output shorebird https://github.com/shorebirdtech/shorebird/releases/latest/download/shorebird-macos
+          chmod +x shorebird
+          sudo mv shorebird /usr/local/bin/shorebird
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Install Apple Certificate
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: apple-actions/import-codesign-certs@v1
+        with:
+          p12-file-base64: ${{ secrets.IOS_P12_CERTIFICATE }}
+          p12-password: ${{ secrets.IOS_P12_PASSWORD }}
+
+      - name: Install Provisioning Profile
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: apple-actions/download-provisioning-profiles@v1
+        with:
+          bundle-id: ${{ secrets.IOS_BUNDLE_ID }}
+          profile-type: 'IOS_APP_STORE'
+          issuer-id: ${{ secrets.IOS_APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.IOS_APPSTORE_KEY_ID }}
+          api-private-key: ${{ secrets.IOS_APPSTORE_PRIVATE_KEY }}
+
+      - name: Build iOS
+        run: |
+          flutter build ios --release
+          cd ios
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release -archivePath Runner.xcarchive archive
+          xcodebuild -exportArchive -archivePath Runner.xcarchive -exportOptionsPlist exportOptions.plist -exportPath ./build
+
+      - name: Create Shorebird Patch
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          shorebird patch ios --version $VERSION
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-ipa
+          path: ios/build/Runner.ipa
+
+      - name: Upload to App Store
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: apple-actions/upload-testflight-build@v1
+        with:
+          app-path: ios/build/Runner.ipa
+          issuer-id: ${{ secrets.IOS_APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.IOS_APPSTORE_KEY_ID }}
+          api-private-key: ${{ secrets.IOS_APPSTORE_PRIVATE_KEY }}
