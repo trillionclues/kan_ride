@@ -44,6 +44,10 @@ jobs:
   build_android:
     name: Build Android App
     needs: version
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && 
+       (github.event.inputs.platform == 'android' || github.event.inputs.platform == 'both'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -121,6 +125,10 @@ jobs:
   build_ios:
     name: Build iOS App
     needs: version
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && 
+       (github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'both'))
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
